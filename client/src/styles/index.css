@@ -1,0 +1,214 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap');
+
+:root {
+  --satin-green: #2B4536;
+  --satin-green-light: #3A5B48;
+  --dull-yellow: #D1B875;
+  --dull-yellow-hover: #E3CD8C;
+  --bg-dark: #162019;
+  --text-light: #E8EBE9;
+  --text-muted: #A3B5AA;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Outfit', sans-serif;
+  background-color: var(--bg-dark);
+  color: var(--text-light);
+  min-height: 100vh;
+}
+
+.app-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+/* Navbar */
+.navbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.5rem 0;
+  border-bottom: 1px solid var(--satin-green-light);
+  margin-bottom: 2rem;
+}
+
+.navbar-brand {
+  font-size: 2rem;
+  font-weight: 800;
+  color: var(--dull-yellow);
+  text-decoration: none;
+  letter-spacing: 1px;
+}
+
+.navbar-link {
+  background-color: var(--satin-green);
+  color: var(--dull-yellow);
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  text-decoration: none;
+  font-weight: 600;
+  transition: all 0.3s ease;
+  border: 1px solid var(--satin-green-light);
+}
+
+.navbar-link:hover {
+  background-color: var(--dull-yellow);
+  color: var(--bg-dark);
+  transform: translateY(-2px);
+}
+
+/* Home */
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+}
+
+.page-title {
+  font-size: 2.5rem;
+  font-weight: 600;
+  color: var(--text-light);
+}
+
+.car-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 2rem;
+}
+
+/* Car Card */
+.car-card {
+  background-color: var(--satin-green);
+  border-radius: 12px;
+  padding: 1.5rem;
+  border: 1px solid var(--satin-green-light);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.car-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 4px;
+  height: 100%;
+  background-color: var(--dull-yellow);
+}
+
+.car-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+  border-color: var(--dull-yellow);
+}
+
+.car-title {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  color: var(--dull-yellow);
+}
+
+.car-year {
+  font-size: 1.1rem;
+  color: var(--text-muted);
+  margin-bottom: 1.5rem;
+}
+
+.car-actions {
+  display: flex;
+  gap: 1rem;
+}
+
+.btn {
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 600;
+  transition: all 0.3s ease;
+  text-decoration: none;
+  text-align: center;
+}
+
+.btn-primary {
+  background-color: var(--dull-yellow);
+  color: var(--bg-dark);
+}
+
+.btn-primary:hover {
+  background-color: var(--dull-yellow-hover);
+  transform: scale(1.05);
+}
+
+.btn-danger {
+  background-color: transparent;
+  color: #ff6b6b;
+  border: 1px solid #ff6b6b;
+}
+
+.btn-danger:hover {
+  background-color: #ff6b6b;
+  color: white;
+}
+
+/* Form */
+.form-container {
+  background-color: var(--satin-green);
+  padding: 2.5rem;
+  border-radius: 12px;
+  max-width: 600px;
+  margin: 0 auto;
+  border: 1px solid var(--satin-green-light);
+}
+
+.form-group {
+  margin-bottom: 1.5rem;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: var(--dull-yellow);
+  font-weight: 600;
+}
+
+.form-control {
+  width: 100%;
+  padding: 0.8rem 1rem;
+  border-radius: 8px;
+  border: 1px solid var(--satin-green-light);
+  background-color: var(--bg-dark);
+  color: var(--text-light);
+  font-family: inherit;
+  font-size: 1rem;
+  transition: border-color 0.3s ease;
+}
+
+.form-control:focus {
+  outline: none;
+  border-color: var(--dull-yellow);
+}
+
+.form-actions {
+  margin-top: 2rem;
+  display: flex;
+  gap: 1rem;
+}
+
+.btn-submit {
+  flex: 1;
+  padding: 1rem;
+  font-size: 1.1rem;
+}
