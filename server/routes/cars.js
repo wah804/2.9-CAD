@@ -1,23 +1,25 @@
 const express = require('express');
 const router = express.Router();
 const Car = require('../models/Car');
+const auth = require('../middleware/auth');
 
-// GET all cars
-router.get('/', async (req, res) => {
+// GET all cars for the logged-in user
+router.get('/', auth, async (req, res) => {
   try {
-    const cars = await Car.find().sort({ created_at: -1 });
+    const cars = await Car.find({ userId: req.user.id }).sort({ created_at: -1 });
     res.json(cars);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
 
-// POST a new car
-router.post('/', async (req, res) => {
+// POST a new car for the logged-in user
+router.post('/', auth, async (req, res) => {
   const car = new Car({
     make: req.body.make,
     model: req.body.model,
-    year: req.body.year
+    year: req.body.year,
+    userId: req.user.id
   });
 
   try {
@@ -29,18 +31,21 @@ router.post('/', async (req, res) => {
 });
 
 // PUT/PATCH a car
-router.put('/:id', async (req, res) => {
+router.put('/:id', auth, async (req, res) => {
   try {
-    const updatedCar = await Car.findByIdAndUpdate(
-      req.params.id,
-      {
-        make: req.body.make,
-        model: req.body.model,
-        year: req.body.year
-      },
-      { new: true } // Returns the updated document
-    );
-    if (!updatedCar) return res.status(404).json({ message: 'Car not found' });
+    const car = await Car.findById(req.params.id);
+    if (!car) return res.status(404).json({ message: 'Car not found' });
+    
+    // Check ownership
+    if (car.userId.toString() !== req.user.id) {
+      return res.status(403).json({ message: 'Unauthorized: You do not own this car' });
+    }
+
+    car.make = req.body.make !== undefined ? req.body.make : car.make;
+    car.model = req.body.model !== undefined ? req.body.model : car.model;
+    car.year = req.body.year !== undefined ? req.body.year : car.year;
+
+    const updatedCar = await car.save();
     res.json(updatedCar);
   } catch (err) {
     res.status(400).json({ message: err.message });
@@ -48,10 +53,17 @@ router.put('/:id', async (req, res) => {
 });
 
 // DELETE a car
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', auth, async (req, res) => {
   try {
-    const car = await Car.findByIdAndDelete(req.params.id);
+    const car = await Car.findById(req.params.id);
     if (!car) return res.status(404).json({ message: 'Car not found' });
+    
+    // Check ownership
+    if (car.userId.toString() !== req.user.id) {
+      return res.status(403).json({ message: 'Unauthorized: You do not own this car' });
+    }
+
+    await Car.findByIdAndDelete(req.params.id);
     res.json({ message: 'Deleted Car' });
   } catch (err) {
     res.status(500).json({ message: err.message });

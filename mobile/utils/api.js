@@ -3,6 +3,7 @@ import axios from 'axios';
 import { Platform } from 'react-native';
 
 const STORAGE_KEY = '@autovault_api_url';
+const TOKEN_KEY = '@autovault_token';
 
 // Default fallback API URLs
 // - iOS Simulator uses localhost
@@ -56,21 +57,75 @@ export const setApiUrl = async (url) => {
 };
 
 /**
+ * Retrieve the saved session token
+ */
+export const getToken = async () => {
+  try {
+    return await AsyncStorage.getItem(TOKEN_KEY);
+  } catch (e) {
+    return null;
+  }
+};
+
+/**
+ * Save or clear session token
+ */
+export const setToken = async (token) => {
+  try {
+    if (!token) {
+      await AsyncStorage.removeItem(TOKEN_KEY);
+    } else {
+      await AsyncStorage.setItem(TOKEN_KEY, token);
+    }
+    return true;
+  } catch (e) {
+    console.error('Error storing token:', e);
+    return false;
+  }
+};
+
+/**
  * Helper to build an Axios instance dynamically with the current base URL
  */
 const getClient = async () => {
   const baseURL = await getApiUrl();
+  const token = await getToken();
+  
+  const headers = {
+    'Content-Type': 'application/json',
+  };
+
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
   return axios.create({
     baseURL,
     timeout: 5000,
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers,
   });
 };
 
 // CRUD API wrappers
 export const api = {
+  // Auth methods
+  login: async (email, password) => {
+    const client = await getClient();
+    const res = await client.post('/auth/login', { email, password });
+    return res.data;
+  },
+  register: async (username, email, password) => {
+    const client = await getClient();
+    const res = await client.post('/auth/register', { username, email, password });
+    return res.data;
+  },
+  getMe: async () => {
+    const client = await getClient();
+    const res = await client.get('/auth/me');
+    return res.data;
+  },
+
+  // Cars CRUD methods
   getCars: async () => {
     const client = await getClient();
     const res = await client.get('/cars');

@@ -19,15 +19,23 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
-import { api, getApiUrl, setApiUrl } from './utils/api';
+import { api, getApiUrl, setApiUrl, getToken, setToken } from './utils/api';
 import StatsSection from './components/StatsSection';
 import CarCard from './components/CarCard';
 import ManageCarModal from './components/ManageCarModal';
+import LoginScreen from './screens/LoginScreen';
+import RegisterScreen from './screens/RegisterScreen';
 
 export default function App() {
+  // Authentication states
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [user, setUser] = useState(null);
+  const [currentScreen, setCurrentScreen] = useState('login'); // 'login' | 'register' | 'vault'
+  const [authLoading, setAuthLoading] = useState(true);
+
   // Collection & loading state
   const [cars, setCars] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   // API URL config state
@@ -40,26 +48,56 @@ export default function App() {
   const [isSettingsVisible, setIsSettingsVisible] = useState(false);
   const [editingCar, setEditingCar] = useState(null);
 
-  // Load the configured API URL and fetch initial car data
-  const initializeApp = useCallback(async () => {
+  // Check auth session and load settings on boot
+  const initializeAuth = useCallback(async () => {
     try {
       const url = await getApiUrl();
       setApiUrlState(url);
       setApiUrlInput(url);
-      await fetchCarsData(url);
+
+      const token = await getToken();
+      if (token) {
+        setApiStatus('checking');
+        try {
+          const userData = await api.getMe();
+          setUser(userData);
+          setIsAuthenticated(true);
+          setCurrentScreen('vault');
+          setApiStatus('connected');
+          // Start fetching car collection
+          fetchCarsData();
+        } catch (err) {
+          console.error('Session verification failed, clearing session:', err);
+          // If connection fails, but token exists, check if it's 401 or network error
+          if (err.response?.status === 401) {
+            await setToken(null);
+            setIsAuthenticated(false);
+            setCurrentScreen('login');
+          } else {
+            // Keep token but register error (likely offline/network)
+            setApiStatus('error');
+            // If offline, still allow showing Vault Screen with cached / empty state
+            setIsAuthenticated(true);
+            setCurrentScreen('vault');
+          }
+        }
+      } else {
+        setIsAuthenticated(false);
+        setCurrentScreen('login');
+      }
     } catch (err) {
-      console.error('Failed to initialize app:', err);
-      setApiStatus('error');
-      setLoading(false);
+      console.error('Session initialization error:', err);
+    } finally {
+      setAuthLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    initializeApp();
-  }, [initializeApp]);
+    initializeAuth();
+  }, [initializeAuth]);
 
   // Fetch cars from the active URL
-  const fetchCarsData = async (currentUrl) => {
+  const fetchCarsData = async () => {
     setApiStatus('checking');
     try {
       const data = await api.getCars();
@@ -68,6 +106,10 @@ export default function App() {
     } catch (err) {
       console.error('Error fetching cars:', err);
       setApiStatus('error');
+      // Auto-logout if token is expired/invalid on request
+      if (err.response?.status === 401) {
+        handleLogout(true);
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -78,7 +120,8 @@ export default function App() {
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     const url = await getApiUrl();
-    await fetchCarsData(url);
+    setApiUrlState(url);
+    await fetchCarsData();
   }, []);
 
   // Save new API URL
@@ -96,12 +139,44 @@ export default function App() {
       const updatedUrl = await getApiUrl();
       setApiUrlState(updatedUrl);
       setApiUrlInput(updatedUrl);
-      await fetchCarsData(updatedUrl);
+      if (isAuthenticated) {
+        await fetchCarsData();
+      } else {
+        // Just verify connection status
+        setApiStatus('checking');
+        try {
+          const client = axios.create({ baseURL: updatedUrl, timeout: 3000 });
+          // Ping backend cars or login route (just checking availability)
+          await client.get('/cars');
+          setApiStatus('connected');
+        } catch (e) {
+          // If 401 it means server is up (requires login), so connected is true!
+          if (e.response?.status === 401) {
+            setApiStatus('connected');
+          } else {
+            setApiStatus('error');
+          }
+        } finally {
+          setLoading(false);
+        }
+      }
     } else {
       Alert.alert('Error', 'Failed to save the custom URL.');
       setLoading(false);
     }
   };
+
+  // Logout handler
+  const handleLogout = useCallback(async (forced = false) => {
+    await setToken(null);
+    setUser(null);
+    setCars([]);
+    setIsAuthenticated(false);
+    setCurrentScreen('login');
+    if (forced) {
+      Alert.alert('Session Expired', 'Your login session has expired. Please sign in again.');
+    }
+  }, []);
 
   // Delete car handler
   const handleDeleteCar = useCallback((id) => {
@@ -119,13 +194,17 @@ export default function App() {
               setCars((prevCars) => prevCars.filter(car => car._id !== id));
             } catch (err) {
               console.error('Failed to delete car:', err);
-              Alert.alert('Error', 'Could not delete the car. Please check connection.');
+              if (err.response?.status === 401) {
+                handleLogout(true);
+              } else {
+                Alert.alert('Error', 'Could not delete the car. Please check connection.');
+              }
             }
           }
         }
       ]
     );
-  }, []);
+  }, [handleLogout]);
 
   // Add/Edit save handler
   const handleSaveCar = async (carData) => {
@@ -144,7 +223,11 @@ export default function App() {
       return true;
     } catch (err) {
       console.error('Error saving car:', err);
-      Alert.alert('Error', 'Failed to save car. Please verify API availability.');
+      if (err.response?.status === 401) {
+        handleLogout(true);
+      } else {
+        Alert.alert('Error', 'Failed to save car. Please verify API availability.');
+      }
       return false;
     }
   };
@@ -159,6 +242,15 @@ export default function App() {
     setIsManageVisible(true);
   }, []);
 
+  // Authentication success callbacks
+  const handleAuthSuccess = (userData) => {
+    setUser(userData);
+    setIsAuthenticated(true);
+    setCurrentScreen('vault');
+    setLoading(true);
+    fetchCarsData();
+  };
+
   // Render car list item
   const renderCarItem = useCallback(({ item }) => (
     <CarCard 
@@ -168,6 +260,44 @@ export default function App() {
     />
   ), [handleEditCar, handleDeleteCar]);
 
+  // Auth Loading Screen
+  if (authLoading) {
+    return (
+      <View style={styles.splashContainer}>
+        <RNStatusBar barStyle="light-content" />
+        <Ionicons name="car-sport" size={80} color="#D1B875" />
+        <ActivityIndicator size="large" color="#D1B875" style={{ marginTop: 24 }} />
+        <Text style={styles.splashText}>Opening AutoVault...</Text>
+      </View>
+    );
+  }
+
+  // Unauthenticated: Login Screen
+  if (!isAuthenticated && currentScreen === 'login') {
+    return (
+      <>
+        <LoginScreen
+          onLoginSuccess={handleAuthSuccess}
+          onNavigateToRegister={() => setCurrentScreen('register')}
+          onOpenSettings={() => setIsSettingsVisible(true)}
+        />
+        {/* Reuse Settings Modal */}
+        <SettingsModal />
+      </>
+    );
+  }
+
+  // Unauthenticated: Register Screen
+  if (!isAuthenticated && currentScreen === 'register') {
+    return (
+      <RegisterScreen
+        onRegisterSuccess={handleAuthSuccess}
+        onNavigateToLogin={() => setCurrentScreen('login')}
+      />
+    );
+  }
+
+  // Authenticated Protected View: Car Vault
   return (
     <SafeAreaView style={styles.container}>
       <RNStatusBar barStyle="light-content" />
@@ -176,15 +306,24 @@ export default function App() {
       <View style={styles.header}>
         <View>
           <Text style={styles.brandTitle}>AutoVault</Text>
-          <Text style={styles.brandSubtitle}>Collection Vault</Text>
+          <Text style={styles.brandSubtitle}>Owner: {user?.username || 'Collector'}</Text>
         </View>
 
-        <Pressable 
-          style={({ pressed }) => [styles.settingsButton, pressed && styles.pressedIcon]}
-          onPress={() => setIsSettingsVisible(true)}
-        >
-          <Ionicons name="settings-outline" size={24} color="#D1B875" />
-        </Pressable>
+        <View style={styles.headerActions}>
+          <Pressable 
+            style={({ pressed }) => [styles.settingsButton, pressed && styles.pressedIcon]}
+            onPress={() => setIsSettingsVisible(true)}
+          >
+            <Ionicons name="settings-outline" size={20} color="#D1B875" />
+          </Pressable>
+
+          <Pressable 
+            style={({ pressed }) => [styles.logoutButton, pressed && styles.pressedIcon]}
+            onPress={() => handleLogout()}
+          >
+            <Ionicons name="log-out-outline" size={20} color="#ff6b6b" />
+          </Pressable>
+        </View>
       </View>
 
       {/* Connection status bar */}
@@ -275,6 +414,15 @@ export default function App() {
       />
 
       {/* Settings / API Endpoint Modal */}
+      <SettingsModal />
+
+      <StatusBar style="light" />
+    </SafeAreaView>
+  );
+
+  // Settings Modal Sub-component helper
+  function SettingsModal() {
+    return (
       <Modal
         visible={isSettingsVisible}
         animationType="fade"
@@ -335,16 +483,26 @@ export default function App() {
           </View>
         </TouchableWithoutFeedback>
       </Modal>
-
-      <StatusBar style="light" />
-    </SafeAreaView>
-  );
+    );
+  }
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#162019', // Match bg-dark
+    backgroundColor: '#162019',
+  },
+  splashContainer: {
+    flex: 1,
+    backgroundColor: '#162019',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  splashText: {
+    color: '#A3B5AA',
+    fontSize: 16,
+    fontWeight: '600',
+    marginTop: 16,
   },
   header: {
     flexDirection: 'row',
@@ -354,31 +512,46 @@ const styles = StyleSheet.create({
     paddingTop: Platform.OS === 'android' ? RNStatusBar.currentHeight + 8 : 12,
     paddingBottom: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#2B4536', // Match satin-green
+    borderBottomColor: '#2B4536',
   },
   brandTitle: {
-    color: '#D1B875', // Match dull-yellow
+    color: '#D1B875',
     fontSize: 28,
     fontWeight: '800',
     letterSpacing: 0.5,
   },
   brandSubtitle: {
-    color: '#A3B5AA', // Match text-muted
+    color: '#A3B5AA',
     fontSize: 12,
     fontWeight: '600',
     textTransform: 'uppercase',
     letterSpacing: 1.5,
     marginTop: 2,
   },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   settingsButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
+    width: 40,
+    height: 40,
+    borderRadius: 10,
     backgroundColor: 'rgba(209, 184, 117, 0.08)',
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
     borderColor: 'rgba(209, 184, 117, 0.2)',
+  },
+  logoutButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255, 107, 107, 0.08)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 107, 107, 0.2)',
   },
   pressedIcon: {
     opacity: 0.7,
@@ -387,7 +560,7 @@ const styles = StyleSheet.create({
   statusBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(43, 69, 54, 0.4)', // Satin green tinted status bar
+    backgroundColor: 'rgba(43, 69, 54, 0.4)',
     paddingHorizontal: 24,
     paddingVertical: 8,
   },
@@ -398,22 +571,22 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   statusDotConnected: {
-    backgroundColor: '#52c41a', // Green
+    backgroundColor: '#52c41a',
   },
   statusDotChecking: {
-    backgroundColor: '#faad14', // Yellow
+    backgroundColor: '#faad14',
   },
   statusDotError: {
-    backgroundColor: '#ff4d4f', // Red
+    backgroundColor: '#ff4d4f',
   },
   statusText: {
-    color: '#A3B5AA', // Match text-muted
+    color: '#A3B5AA',
     fontSize: 12,
     fontWeight: '500',
     flex: 1,
   },
   statusUrl: {
-    color: '#E8EBE9', // Match text-light
+    color: '#E8EBE9',
     fontWeight: '600',
   },
   loadingContainer: {
@@ -430,7 +603,7 @@ const styles = StyleSheet.create({
   listContent: {
     paddingVertical: 20,
     paddingHorizontal: 24,
-    paddingBottom: 100, // Cushion for FAB
+    paddingBottom: 100,
   },
   emptyContainer: {
     alignItems: 'center',
@@ -470,7 +643,7 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: '#D1B875', // Match dull-yellow
+    backgroundColor: '#D1B875',
     justifyContent: 'center',
     alignItems: 'center',
     elevation: 8,

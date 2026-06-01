@@ -4,6 +4,7 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const path = require('path');
 const carsRouter = require('./routes/cars');
+const authRouter = require('./routes/auth');
 
 const app = express();
 
@@ -18,6 +19,7 @@ mongoose.connect(MONGODB_URI)
 
 // API Routes
 app.use('/api/cars', carsRouter);
+app.use('/api/auth', authRouter);
 
 // Serve static React files in production
 app.use(express.static(path.join(__dirname, '../client/dist')));
